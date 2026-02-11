@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <title>PerrochicoApp - Pro Trading Terminal</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="PerrochicoApp - Real-time crypto futures trading alerts">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: rgba(30, 41, 59, 0.7);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-primary: #8b5cf6;
+            --accent-secondary: #06b6d4;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            background-image:
+                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%),
+                radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%),
+                radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+            color: var(--text-primary);
+            min-height: 100vh; padding: 2rem; overflow-x: hidden;
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-dark); }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        .container { max-width: 1600px; margin: 0 auto; }
+        .hero { text-align: center; margin-bottom: 3rem; position: relative; }
+        .dog-container {
+            font-size: 9rem; line-height: 1; margin-bottom: 0.5rem;
+            display: inline-block; cursor: pointer;
+            filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.5));
+            animation: float 6s ease-in-out infinite; transition: transform 0.3s;
+        }
+        .dog-container:hover {
+            transform: scale(1.1) rotate(5deg);
+            filter: drop-shadow(0 0 40px rgba(139, 92, 246, 0.8));
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-15px); }
+            100% { transform: translateY(0px); }
+        }
+        h1 {
+            font-size: 3rem; font-weight: 800;
+            background: linear-gradient(to right, #c084fc, #6366f1, #38bdf8);
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+            margin-bottom: 0.3rem; letter-spacing: -0.05em;
+        }
+        .subtitle {
+            color: var(--text-secondary); font-size: 1rem;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
+        .live-dot {
+            width: 10px; height: 10px; background-color: var(--success);
+            border-radius: 50%; box-shadow: 0 0 10px var(--success);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.9); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .card {
+            background: var(--bg-card); backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px); border: var(--glass-border);
+            border-radius: 20px; padding: 1.5rem; margin-bottom: 2rem;
+            box-shadow: var(--glass-shadow);
+        }
+        .card-go {
+            background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(249,115,22,0.08), rgba(30,41,59,0.9));
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            position: relative; overflow: hidden;
+        }
+        .card-go::before {
+            content: ''; position: absolute; top: 0; left: -100%;
+            width: 200%; height: 2px;
+            background: linear-gradient(90deg, transparent, #ef4444, #f59e0b, transparent);
+            animation: scanLine 3s linear infinite;
+        }
+        @keyframes scanLine { 0% { left: -100%; } 100% { left: 100%; } }
+        .card-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 1rem;
+        }
+        .card-title {
+            font-size: 1.4rem; font-weight: 700; color: var(--text-primary);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .go-title {
+            font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em;
+            background: linear-gradient(to right, #ef4444, #f59e0b);
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+        }
+        .icon { font-size: 1.5rem; }
+        .controls { display: flex; gap: 1rem; align-items: center; }
+        .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; white-space: nowrap; }
+        th {
+            text-align: left; padding: 0.8rem 1rem; color: var(--text-secondary);
+            font-weight: 500; font-size: 0.8rem; text-transform: uppercase;
+            letter-spacing: 0.05em; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        td {
+            padding: 0.8rem 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--text-primary); font-size: 0.95rem; vertical-align: middle;
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(255, 255, 255, 0.02); }
+        .row-animate { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .go-fire-row { background: rgba(239,68,68,0.06); }
+        .go-fire-row:hover td { background: rgba(239,68,68,0.1) !important; }
+        .go-hot-row { background: rgba(249,115,22,0.04); }
+        .go-watch-row { background: transparent; }
+        .symbol-cell, .symbol-cell-go { font-weight: 700; color: var(--text-primary); letter-spacing: 0.03em; }
+        .symbol-cell-go { font-size: 1.1rem; }
+        .rate-badge {
+            display: inline-block; padding: 4px 12px; border-radius: 8px;
+            font-weight: 700; font-size: 0.9rem;
+        }
+        .rate-fire {
+            background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(249,115,22,0.2));
+            color: #fbbf24; border: 1px solid rgba(239,68,68,0.3);
+            animation: rateGlow 2s ease-in-out infinite;
+        }
+        @keyframes rateGlow {
+            0%, 100% { box-shadow: 0 0 5px rgba(239,68,68,0.3); }
+            50% { box-shadow: 0 0 15px rgba(239,68,68,0.5); }
+        }
+        .rate-high { background: rgba(249,115,22,0.15); color: #fb923c; border: 1px solid rgba(249,115,22,0.25); }
+        .rate-medium { background: rgba(139,92,246,0.12); color: #a78bfa; border: 1px solid rgba(139,92,246,0.2); }
+        .rate-low { background: rgba(148,163,184,0.08); color: var(--text-secondary); border: 1px solid rgba(148,163,184,0.15); }
+        .go-badge {
+            display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+            border-radius: 10px; font-weight: 800; font-size: 0.85rem;
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .go-fire {
+            background: linear-gradient(135deg, #ef4444, #f97316); color: white;
+            box-shadow: 0 0 12px rgba(239,68,68,0.4); animation: fireGlow 1.5s ease-in-out infinite;
+        }
+        @keyframes fireGlow {
+            0%, 100% { box-shadow: 0 0 12px rgba(239,68,68,0.4); }
+            50% { box-shadow: 0 0 25px rgba(239,68,68,0.7); }
+        }
+        .go-hot { background: linear-gradient(135deg, #f97316, #fbbf24); color: #1e293b; }
+        .go-watch { background: rgba(148,163,184,0.15); color: #94a3b8; border: 1px solid rgba(148,163,184,0.25); }
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; }
+        .badge-success { background: rgba(16,185,129,0.15); color: var(--success); }
+        .badge-danger { background: rgba(239,68,68,0.15); color: var(--danger); }
+        .badge-neutral { background: rgba(148,163,184,0.1); color: var(--text-secondary); }
+        .positive-strong { color: var(--success); font-weight: 600; }
+        .negative { color: var(--danger); }
+        .price { color: #e2e8f0; font-variant-numeric: tabular-nums; }
+        .counter-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 14px; border-radius: 10px; font-weight: 700; font-size: 0.9rem;
+        }
+        .counter-fire {
+            background: linear-gradient(135deg, rgba(239,68,68,0.15), rgba(249,115,22,0.15));
+            color: #fbbf24; border: 1px solid rgba(239,68,68,0.3);
+        }
+        .counter-zero { background: rgba(148,163,184,0.08); color: var(--text-secondary); border: 1px solid rgba(148,163,184,0.15); }
+        .empty-state { text-align: center; padding: 2.5rem !important; color: var(--text-secondary); }
+        .scanning-anim { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 0.95rem; }
+        .scan-dot {
+            width: 8px; height: 8px; background: var(--accent-primary);
+            border-radius: 50%; animation: scanPulse 1.5s ease-in-out infinite;
+        }
+        @keyframes scanPulse {
+            0% { opacity: 0.3; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.2); }
+            100% { opacity: 0.3; transform: scale(0.8); }
+        }
+        .footer { text-align: center; margin-top: 4rem; color: var(--text-secondary); font-size: 0.9rem; padding-bottom: 2rem; }
+        .binance-link {
+            text-decoration: none; font-size: 1.15rem; display: inline-block;
+            transition: transform 0.2s, filter 0.2s; vertical-align: middle; margin-right: 4px;
+        }
+        .binance-link:hover { transform: scale(1.3) rotate(15deg); filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.6)); }
+        .refresh-counter { font-size: 0.8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+        .loading-overlay { display: flex; align-items: center; justify-content: center; padding: 3rem; color: var(--text-secondary); gap: 10px; }
+        .loading-spinner {
+            width: 20px; height: 20px; border: 2px solid rgba(139,92,246,0.3);
+            border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error-msg { color: var(--danger); text-align: center; padding: 2rem; }
+        @media (max-width: 768px) {
+            body { padding: 0.5rem; }
+            .container { padding: 0; }
+            h1 { font-size: 1.8rem; margin-bottom: 0.2rem; }
+            .subtitle { font-size: 0.85rem; flex-wrap: wrap; }
+            .dog-container { font-size: 6rem; }
+            .card { padding: 1rem; border-radius: 16px; margin-bottom: 1.5rem; }
+            .card-header { flex-direction: column; align-items: flex-start; gap: 0.8rem; padding-bottom: 0.8rem; }
+            .controls { width: 100%; justify-content: space-between; }
+            .binance-link { font-size: 1.4rem; padding: 4px; margin-right: 6px; }
+            td, th { padding: 0.6rem 0.4rem; font-size: 0.8rem; }
+            .symbol-cell, .symbol-cell-go { font-size: 0.9rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <div class="dog-container" id="dog" onclick="bark(); this.style.animation='none'; void this.offsetWidth; this.style.animation='float 6s ease-in-out infinite';">🐶</div>
+            <h1>PERROCHICO APP</h1>
+            <div class="subtitle">
+                <span class="live-dot"></span>
+                PRO TERMINAL v2.0 &bull; LIVE DATA
+                <span class="refresh-counter" id="refresh-timer"></span>
+            </div>
+        </div>
+
+        <div class="card card-go">
+            <div class="card-header">
+                <div class="card-title"><span class="icon">🚨</span><span class="go-title">GO NOW — Trading Alerts</span></div>
+                <div class="controls"><span id="go-counter" class="counter-badge counter-zero">0 signals</span></div>
+            </div>
+            <div class="table-responsive">
+                <table><thead><tr><th>Signal</th><th>Symbol</th><th>Rate</th><th>Funding</th><th>Change</th><th>Volume</th></tr></thead>
+                <tbody id="go-now-body"><tr><td colspan="6" class="empty-state"><div class="loading-overlay"><div class="loading-spinner"></div><span>Connecting to Binance...</span></div></td></tr></tbody></table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><div class="card-title"><span class="icon">📡</span> Market Hot Spots</div></div>
+            <div class="table-responsive">
+                <table><thead><tr><th>Symbol</th><th>Price</th><th>Change 24h</th><th>Volume</th><th>Funding</th></tr></thead>
+                <tbody id="hot-spots-body"><tr><td colspan="5" class="empty-state"><div class="loading-overlay"><div class="loading-spinner"></div><span>Loading...</span></div></td></tr></tbody></table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><div class="card-title"><span class="icon">📊</span> All Tracked Symbols</div></div>
+            <div class="table-responsive">
+                <table><thead><tr><th>Symbol</th><th>Price</th><th>Change 24h</th><th>Volume</th><th>Rate</th><th>Funding</th></tr></thead>
+                <tbody id="status-body"><tr><td colspan="6" class="empty-state"><div class="loading-overlay"><div class="loading-spinner"></div><span>Loading...</span></div></td></tr></tbody></table>
+            </div>
+        </div>
+
+        <div class="footer">PerrochicoApp &copy; 2026 &bull; Live data from Binance Futures API &bull; Auto-refreshes every 30s</div>
+    </div>
+
+<script>
+const API='https://fapi.binance.com', TOP_N=25, MIN_RATE=4.0, REFRESH_MS=30000;
+let countdown=REFRESH_MS/1000;
+
+function bark(){try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return;const c=new C();function w(t,f,d){const b=c.createBuffer(1,c.sampleRate*2,c.sampleRate),a=b.getChannelData(0);for(let i=0;i<a.length;i++)a[i]=Math.random()*2-1;const n=c.createBufferSource();n.buffer=b;const fl=c.createBiquadFilter();fl.type='bandpass';fl.frequency.value=f;fl.Q.value=1.5;const g=c.createGain();g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(1,t+.05);g.gain.exponentialRampToValueAtTime(.01,t+d);n.connect(fl);fl.connect(g);g.connect(c.destination);n.start(t);n.stop(t+d)}const t=c.currentTime;w(t,400,.25);w(t+.3,350,.3)}catch(e){}}
+
+function bLink(s){return `<a href="https://www.binance.com/es-LA/futures/${s}" target="_blank" rel="noopener" class="binance-link" title="${s}">🪐</a>`}
+function fmtP(p){return p>=1000?p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):p>=1?p.toFixed(4):p>=.01?p.toFixed(6):p.toFixed(8)}
+function fmtV(v){return v>=1e9?'$'+(v/1e9).toFixed(1)+'B':v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v.toFixed(0)}
+function fundTag(r){if(r==null)return '<span class="badge badge-neutral">—</span>';const a=Math.abs(r),p=(r*100).toFixed(4)+'%';if(a>.003)return `<span class="badge badge-danger">${p} RARO</span>`;if(a>.001)return `<span class="badge badge-success">${p}</span>`;return `<span class="badge badge-neutral">${p}</span>`}
+function rateH(r){let c='rate-low';if(r>=7.5)c='rate-fire';else if(r>=5.5)c='rate-high';else if(r>=3)c='rate-medium';return `<span class="rate-badge ${c}">${r.toFixed(1)}</span>`}
+function pRank(vs,v){const s=[...vs].sort((a,b)=>a-b);let c=0;for(const x of s)if(x<v)c++;return s.length?c/s.length:0}
+
+function computeRate(t,vols){
+    let r=0;
+    const ap=Math.abs(t.priceChangePercent);
+    if(ap>=15)r+=3;else if(ap>=10)r+=2.5;else if(ap>=7)r+=2;else if(ap>=4)r+=1.5;else if(ap>=2)r+=.5;
+    r+=pRank(vols,t.quoteVolume)*2;
+    if(t.highPrice>0){const pb=(t.highPrice-t.lastPrice)/t.highPrice;if(pb>=.06)r+=2;else if(pb>=.03)r+=1.5;else if(pb>=.015)r+=1;else if(pb>=.005)r+=.5}
+    if(t.fundingRate!=null){if(t.fundingRate>=.005)r+=1;else if(t.fundingRate>=.002)r+=.5;else if(t.fundingRate<=-.005)r-=2;else if(t.fundingRate<=-.002)r-=1}
+    return Math.max(0,Math.min(10,r));
+}
+
+async function fetchAll(){
+    try{
+        const [tR,fR]=await Promise.all([fetch(API+'/fapi/v1/ticker/24hr'),fetch(API+'/fapi/v1/premiumIndex')]);
+        const tickers=await tR.json(), funding=await fR.json();
+        const fMap={};funding.forEach(f=>{fMap[f.symbol]=parseFloat(f.lastFundingRate)});
+        let data=tickers.filter(t=>t.symbol.endsWith('USDT')&&parseFloat(t.quoteVolume)>0)
+            .map(t=>({symbol:t.symbol,lastPrice:parseFloat(t.lastPrice),priceChangePercent:parseFloat(t.priceChangePercent),quoteVolume:parseFloat(t.quoteVolume),highPrice:parseFloat(t.highPrice),lowPrice:parseFloat(t.lowPrice),fundingRate:fMap[t.symbol]??null}))
+            .sort((a,b)=>Math.abs(b.priceChangePercent)-Math.abs(a.priceChangePercent)).slice(0,TOP_N);
+        const vols=data.map(t=>t.quoteVolume);
+        data.forEach(t=>{t.rate=computeRate(t,vols)});
+        const goNow=data.filter(t=>t.rate>=MIN_RATE).sort((a,b)=>b.rate-a.rate);
+        renderGo(goNow);renderHot(data);renderAll(data);
+    }catch(e){
+        console.error(e);
+        document.getElementById('go-now-body').innerHTML='<tr><td colspan="6" class="empty-state error-msg">⚠️ Error connecting to Binance API. Try refreshing.</td></tr>';
+    }
+}
+
+function renderGo(list){
+    const tb=document.getElementById('go-now-body'),ct=document.getElementById('go-counter');
+    if(!list.length){tb.innerHTML='<tr><td colspan="6" class="empty-state"><div class="scanning-anim"><span class="scan-dot"></span><span>Scanning for GO setups...</span></div></td></tr>';ct.className='counter-badge counter-zero';ct.textContent='0 signals';return}
+    ct.className='counter-badge counter-fire';ct.innerHTML='🔥 '+list.length+' signal'+(list.length>1?'s':'');
+    tb.innerHTML=list.map(t=>{let ac,ai,al;if(t.rate>=7.5){ac='go-fire';ai='🔥';al='GO NOW'}else if(t.rate>=5.5){ac='go-hot';ai='⚡';al='GO'}else{ac='go-watch';ai='👁️';al='WATCH'}
+    return `<tr class="row-animate ${ac}-row"><td><span class="go-badge ${ac}">${ai} ${al}</span></td><td class="symbol-cell-go">${bLink(t.symbol)} ${t.symbol}</td><td>${rateH(t.rate)}</td><td>${fundTag(t.fundingRate)}</td><td class="${t.priceChangePercent>0?'positive-strong':'negative'}">${t.priceChangePercent.toFixed(2)}%</td><td>${fmtV(t.quoteVolume)}</td></tr>`}).join('');
+}
+
+function renderHot(list){
+    document.getElementById('hot-spots-body').innerHTML=list.slice(0,10).map(t=>
+        `<tr class="row-animate"><td class="symbol-cell"><span style="font-size:1.2rem">🔥</span> ${bLink(t.symbol)} ${t.symbol}</td><td class="price">${fmtP(t.lastPrice)}</td><td class="${t.priceChangePercent>0?'positive-strong':'negative'}">${t.priceChangePercent.toFixed(2)}%</td><td>${fmtV(t.quoteVolume)}</td><td>${fundTag(t.fundingRate)}</td></tr>`).join('');
+}
+
+function renderAll(list){
+    const sorted=[...list].sort((a,b)=>b.rate-a.rate);
+    document.getElementById('status-body').innerHTML=sorted.map(t=>
+        `<tr class="row-animate"><td class="symbol-cell">${bLink(t.symbol)} ${t.symbol}</td><td class="price">${fmtP(t.lastPrice)}</td><td class="${t.priceChangePercent>0?'positive-strong':'negative'}">${t.priceChangePercent.toFixed(2)}%</td><td>${fmtV(t.quoteVolume)}</td><td>${rateH(t.rate)}</td><td>${fundTag(t.fundingRate)}</td></tr>`).join('');
+}
+
+setInterval(()=>{countdown--;const el=document.getElementById('refresh-timer');if(el)el.textContent='('+countdown+'s)';if(countdown<=0){countdown=REFRESH_MS/1000;fetchAll()}},1000);
+fetchAll();
+</script>
+</body>
+</html>
