@@ -143,12 +143,7 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
 
         # Helper: Binance Futures link for a symbol
         def binance_link(symbol: str) -> str:
-            url = f"https://www.binance.com/es-LA/futures/{symbol}"
-            return (
-                f'<a href="{url}" target="_blank" rel="noopener" '
-                f'class="binance-link" title="Open {symbol} in Binance Futures">'
-                f'🪐</a>'
-            )
+            return f'<a href="#" onclick="openBinance(\'{symbol}\'); return false;" class="binance-link" title="{symbol}">🪐</a>'
         
         # Rate helpers
         def get_rate(sym: str) -> float:
@@ -1084,6 +1079,20 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
                     Built with 💜 by Earn1n9 Protocol
                 </div>
             </div>
+        <script>
+            function openBinance(symbol) {{
+                var url = "https://www.binance.com/es-LA/futures/" + symbol;
+                var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                if (isMobile) {{
+                    window.location.href = "binance://futures/" + symbol;
+                    setTimeout(function() {{
+                        window.location.href = url;
+                    }}, 800);
+                }} else {{
+                    window.open(url, "_blank");
+                }}
+            }}
+        </script>
         </body>
         </html>
             ''',

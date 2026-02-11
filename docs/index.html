@@ -749,7 +749,19 @@
         }
 
         // Helpers
-        function bLink(s) { return `<a href="https://www.binance.com/es-LA/futures/${s}" target="_blank" rel="noopener" class="binance-link" title="${s}">🪐</a>`; }
+        function openBinance(symbol) {
+            var url = "https://www.binance.com/es-LA/futures/" + symbol;
+            var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            if (isMobile) {
+                window.location.href = "binance://futures/" + symbol;
+                setTimeout(function () {
+                    window.location.href = url;
+                }, 800);
+            } else {
+                window.open(url, "_blank");
+            }
+        }
+        function bLink(s) { return `<a href="#" onclick="openBinance('${s}'); return false;" class="binance-link" title="${s}">🪐</a>`; }
         function fmtP(p) { if (p >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); if (p >= 1) return p.toFixed(4); if (p >= 0.01) return p.toFixed(6); return p.toFixed(8); }
         function fmtV(v) { if (v >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B'; if (v >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M'; if (v >= 1e3) return '$' + (v / 1e3).toFixed(0) + 'K'; return '$' + v.toFixed(0); }
         function fundTag(r) { if (r == null) return '—'; if (Math.abs(r) < 0.0001) return '<span class="badge badge-neutral">NEUTRAL</span>'; if (r > 0.0001) return '<span class="badge badge-success">EARN</span>'; return '<span class="badge badge-danger">PAY</span>'; }
