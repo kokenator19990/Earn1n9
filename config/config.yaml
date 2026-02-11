@@ -1,0 +1,42 @@
+binance:
+  base_url: "https://fapi.binance.com"
+  exchange_info_endpoint: "/fapi/v1/exchangeInfo"
+  ticker_24h_endpoint: "/fapi/v1/ticker/24hr"
+scanner:
+  refresh_24h_sec: 30
+  min_24h_change_pct: 15.0
+  min_quote_volume_usdt: 5000000
+  topN: 60
+  cooldown_min: 10
+websocket:
+  base_url: "wss://fstream.binance.com/stream"
+  max_streams_per_connection: 1024
+  reconnect_max_sec: 60
+  symbol_refresh_sec: 10
+explosion:
+  ret_th: 0.02
+  vr_th: 4.0
+  trades_pctl: 0.90
+  min_points: 2
+  cooldown_min: 10
+  median_min_samples: 20
+  trades_floor: 50
+  buffer_size: 60
+short_setup:
+  retest_zone_pct: 0.004
+  fail_drop_pct: 0.006
+  retest_timeout_min: 90
+  retest_confirm_window_sec: 60
+  cooldown_min: 10
+  max_setups_per_symbol_per_day: 6
+  funding_abs_max: 0.002
+  alert_mode: "both"
+  beep_on_short_setup: false
+dashboard:
+  host: "127.0.0.1"
+  port: 8000
+logging:
+  level: "INFO"
+  file: "logs/app.jsonl"
+storage:
+  path: "data/alerts.db"
