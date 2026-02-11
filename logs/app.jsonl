@@ -5604,3 +5604,5 @@
 {"timestamp": "2026-02-11T17:42:54.254434+00:00", "level": "INFO", "module": "root", "message": "scan_cycle", "extra": {"taskName": "Task-1", "top_count": 8, "recent_count": 8}}
 {"timestamp": "2026-02-11T17:43:13.648883+00:00", "level": "INFO", "module": "httpx", "message": "HTTP Request: GET https://fapi.binance.com/fapi/v1/ticker/24hr \"HTTP/1.1 200 OK\"", "extra": {"taskName": "Task-1"}}
 {"timestamp": "2026-02-11T17:43:13.672570+00:00", "level": "INFO", "module": "root", "message": "scan_cycle", "extra": {"taskName": "Task-1", "top_count": 8, "recent_count": 8}}
+{"timestamp": "2026-02-11T17:43:43.632694+00:00", "level": "INFO", "module": "httpx", "message": "HTTP Request: GET https://fapi.binance.com/fapi/v1/ticker/24hr \"HTTP/1.1 200 OK\"", "extra": {"taskName": "Task-1"}}
+{"timestamp": "2026-02-11T17:43:43.646470+00:00", "level": "INFO", "module": "root", "message": "scan_cycle", "extra": {"taskName": "Task-1", "top_count": 8, "recent_count": 8}}
