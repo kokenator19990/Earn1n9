@@ -624,6 +624,7 @@
             </div>
         </div>
 
+        <!-- GO NOW -->
         <div class="card card-go">
             <div class="card-header">
                 <div class="card-title"><span class="icon">🚨</span><span class="go-title">GO NOW — Trading
@@ -638,14 +639,13 @@
                             <th>Pair</th>
                             <th>Rate</th>
                             <th>Funding</th>
-                            <th>AGE</th>
-                            <th>SM %</th>
-                            <th>VOL-Z</th>
+                            <th>5m %</th>
+                            <th>Vol-Z</th>
                         </tr>
                     </thead>
                     <tbody id="go-now-body">
                         <tr>
-                            <td colspan="7" class="empty-state">
+                            <td colspan="6" class="empty-state">
                                 <div class="loading-overlay">
                                     <div class="loading-spinner"></div><span>Connecting to Binance...</span>
                                 </div>
@@ -656,9 +656,10 @@
             </div>
         </div>
 
+        <!-- Hot Spots -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title"><span class="icon">📡</span> Market Hot Spots (Last 5 Min)</div>
+                <div class="card-title"><span class="icon">📡</span> Market Hot Spots</div>
             </div>
             <div class="table-responsive">
                 <table>
@@ -668,7 +669,7 @@
                             <th>5m Chg</th>
                             <th>Volume</th>
                             <th>Funding</th>
-                            <th>Time</th>
+                            <th>24h %</th>
                         </tr>
                     </thead>
                     <tbody id="hot-spots-body">
@@ -684,6 +685,7 @@
             </div>
         </div>
 
+        <!-- All Symbols -->
         <div class="card">
             <div class="card-header">
                 <div class="card-title"><span class="icon">📊</span> All Tracked Symbols</div>
@@ -714,47 +716,19 @@
         </div>
 
         <div class="footer">PerrochicoApp &copy; 2026 &bull; Live data from Binance Futures API &bull; Auto-refreshes
-            every 30s</div>
+            every 10s</div>
     </div>
 
     <script>
-        // ── Constants (match Python backend) ──
         const API = 'https://fapi.binance.com';
         const TOP_N = 25;
         const MIN_RATE = 4.0;
-        const REFRESH_MS = 30000;
-        const MAX_AGE_MIN = 10;
+        const REFRESH_MS = 10000;
 
-        // ── State ──
         let countdown = REFRESH_MS / 1000;
         let klinesCache = {};
-        let lastTopSymbols = [];
-        let recentCandidates = [];
-        let isFirstLoad = true;
 
-        // ── LocalStorage tracking ──
-        function loadTracking() {
-            try {
-                const d = localStorage.getItem('perrochico_tracking');
-                if (d) {
-                    const p = JSON.parse(d);
-                    lastTopSymbols = p.lastTop || [];
-                    recentCandidates = p.recent || [];
-                    isFirstLoad = false; // We have prior data
-                }
-            } catch (e) { }
-        }
-
-        function saveTracking() {
-            try {
-                localStorage.setItem('perrochico_tracking', JSON.stringify({
-                    lastTop: lastTopSymbols,
-                    recent: recentCandidates
-                }));
-            } catch (e) { }
-        }
-
-        // ── Bark sound ──
+        // Bark
         function bark() {
             try {
                 const C = window.AudioContext || window.webkitAudioContext;
@@ -765,73 +739,34 @@
                     const a = b.getChannelData(0);
                     for (let i = 0; i < a.length; i++) a[i] = Math.random() * 2 - 1;
                     const n = c.createBufferSource(); n.buffer = b;
-                    const fl = c.createBiquadFilter();
-                    fl.type = 'bandpass'; fl.frequency.value = f; fl.Q.value = 1.5;
+                    const fl = c.createBiquadFilter(); fl.type = 'bandpass'; fl.frequency.value = f; fl.Q.value = 1.5;
                     const g = c.createGain();
-                    g.gain.setValueAtTime(0, t);
-                    g.gain.linearRampToValueAtTime(1, t + .05);
-                    g.gain.exponentialRampToValueAtTime(.01, t + d);
-                    n.connect(fl); fl.connect(g); g.connect(c.destination);
-                    n.start(t); n.stop(t + d);
+                    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1, t + .05); g.gain.exponentialRampToValueAtTime(.01, t + d);
+                    n.connect(fl); fl.connect(g); g.connect(c.destination); n.start(t); n.stop(t + d);
                 }
-                const t = c.currentTime;
-                woof(t, 400, .25);
-                woof(t + .3, 350, .3);
+                const t = c.currentTime; woof(t, 400, .25); woof(t + .3, 350, .3);
             } catch (e) { }
         }
 
-        // ── Formatting helpers ──
-        function bLink(s) {
-            return `<a href="https://www.binance.com/es-LA/futures/${s}" target="_blank" rel="noopener" class="binance-link" title="${s}">🪐</a>`;
-        }
+        // Helpers
+        function bLink(s) { return `<a href="https://www.binance.com/es-LA/futures/${s}" target="_blank" rel="noopener" class="binance-link" title="${s}">🪐</a>`; }
+        function fmtP(p) { if (p >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); if (p >= 1) return p.toFixed(4); if (p >= 0.01) return p.toFixed(6); return p.toFixed(8); }
+        function fmtV(v) { if (v >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B'; if (v >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M'; if (v >= 1e3) return '$' + (v / 1e3).toFixed(0) + 'K'; return '$' + v.toFixed(0); }
+        function fundTag(r) { if (r == null) return '—'; if (Math.abs(r) < 0.0001) return '<span class="badge badge-neutral">NEUTRAL</span>'; if (r > 0.0001) return '<span class="badge badge-success">EARN</span>'; return '<span class="badge badge-danger">PAY</span>'; }
+        function rateH(r) { let c = 'rate-low'; if (r >= 7.5) c = 'rate-fire'; else if (r >= 5.5) c = 'rate-high'; else if (r >= 4) c = 'rate-medium'; return `<span class="rate-badge ${c}">${r.toFixed(1)}</span>`; }
+        function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
-        function fmtP(p) {
-            if (p >= 1000) return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            if (p >= 1) return p.toFixed(4);
-            if (p >= 0.01) return p.toFixed(6);
-            return p.toFixed(8);
-        }
-
-        function fmtV(v) {
-            if (v >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B';
-            if (v >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
-            if (v >= 1e3) return '$' + (v / 1e3).toFixed(0) + 'K';
-            return '$' + v.toFixed(0);
-        }
-
-        // FIX #5: Funding tag – matches Python: abs < 0.0001 → NEUTRAL, > 0.0001 → EARN, else PAY
-        function fundTag(r) {
-            if (r == null) return '—';
-            if (Math.abs(r) < 0.0001) return '<span class="badge badge-neutral">NEUTRAL</span>';
-            if (r > 0.0001) return '<span class="badge badge-success">EARN</span>';
-            return '<span class="badge badge-danger">PAY</span>';
-        }
-
-        function rateH(r) {
-            let c = 'rate-low';
-            if (r >= 7.5) c = 'rate-fire';
-            else if (r >= 5.5) c = 'rate-high';
-            else if (r >= 4) c = 'rate-medium';
-            return `<span class="rate-badge ${c}">${r.toFixed(1)}</span>`;
-        }
-
-        // FIX #4: percentile_rank – matches Python's bisect_right logic exactly
+        // percentileRank — matches Python bisect_right
         function percentileRank(values, value) {
             const ordered = [...values].sort((a, b) => a - b);
             if (!ordered.length) return 0.0;
             if (ordered.length === 1) return 0.5;
-            // bisect_right: count of elements <= value
             let count = 0;
-            for (const x of ordered) {
-                if (x <= value) count++;
-                else break;
-            }
+            for (const x of ordered) { if (x <= value) count++; else break; }
             return clamp((count - 1) / (ordered.length - 1), 0.0, 1.0);
         }
 
-        function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-
-        // FIX #3: triangular – matches Python: x <= left or x >= right → 0.0
+        // triangular — matches Python (strict boundaries)
         function triangular(x, left, peak, right) {
             if (x <= left || x >= right) return 0.0;
             if (x === peak) return 1.0;
@@ -839,166 +774,119 @@
             return (right - x) / (right - peak);
         }
 
-        // ── Kline fetching with cache ──
+        // Klines with cache
         async function fetchKlines(symbol, interval, limit) {
             const key = `${symbol}_${interval}`;
             const now = Date.now();
-            if (klinesCache[key] && (now - klinesCache[key].ts) < 25000) return klinesCache[key].data;
+            if (klinesCache[key] && (now - klinesCache[key].ts) < 8000) return klinesCache[key].data;
             try {
                 const r = await fetch(`${API}/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
                 const d = await r.json();
                 if (!Array.isArray(d)) return null;
-                const parsed = d.map(k => ({
-                    open: parseFloat(k[1]),
-                    high: parseFloat(k[2]),
-                    low: parseFloat(k[3]),
-                    close: parseFloat(k[4]),
-                    volume: parseFloat(k[5])
-                }));
+                const parsed = d.map(k => ({ open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]) }));
                 klinesCache[key] = { data: parsed, ts: now };
                 return parsed;
             } catch (e) { return null; }
         }
 
-        // FIX #2: findSwingLows – matches Python exactly: window=1 (adjacent neighbors)
-        // Python: lows[i] < lows[i-1] and lows[i] <= lows[i+1]
+        // findSwingLows — matches Python exactly (adjacent neighbors)
         function findSwingLows(lows) {
             if (lows.length < 3) return [];
             const swings = [];
             for (let i = 1; i < lows.length - 1; i++) {
-                if (lows[i] < lows[i - 1] && lows[i] <= lows[i + 1]) {
-                    swings.push(lows[i]);
-                }
+                if (lows[i] < lows[i - 1] && lows[i] <= lows[i + 1]) swings.push(lows[i]);
             }
             return swings;
         }
 
-        // ── Full rate calculation (ported exactly from trade_rating.py) ──
-        function computeRateSync(ticker, fundingRate, volumeRank, k1m, k1h, k1d) {
-            const change24h = ticker.priceChangePercent;
+        // Full rate calculation (from trade_rating.py)
+        function computeRate(ticker, fundingRate, volumeRank, k1m, k1h, k1d) {
+            const absChg = Math.abs(ticker.priceChangePercent);
             const lastPrice = ticker.lastPrice;
 
-            // A) Explosion (0-4 pts)
-            const absChg = Math.abs(change24h);
-            let explosionScore = 0;
-            if (absChg >= 8) explosionScore = clamp((absChg - 8) / (40 - 8), 0, 1) * 4;
+            // A) Explosion (0-4)
+            let explosion = 0;
+            if (absChg >= 8) explosion = clamp((absChg - 8) / 32, 0, 1) * 4;
 
-            // B) Volume (0-2 pts)
-            const volumeScore = clamp(volumeRank, 0, 1) * 2;
+            // B) Volume (0-2)
+            const volume = clamp(volumeRank, 0, 1) * 2;
 
-            // C) Pullback (0-2 pts) — uses 1m kline highs
-            let pullbackScore = 0, pullbackPct = null, recentHigh = null;
+            // C) Pullback (0-2)
+            let pullback = 0, recentHigh = null;
             if (k1m && k1m.length > 0) {
                 const highs = k1m.slice(-60).map(x => x.high);
                 recentHigh = Math.max(...highs);
                 if (recentHigh > 0 && lastPrice > 0) {
-                    pullbackPct = (recentHigh - lastPrice) / recentHigh;
-                    if (pullbackPct > 0) pullbackScore = triangular(pullbackPct * 100, 2, 4, 8) * 2;
+                    const pct = (recentHigh - lastPrice) / recentHigh;
+                    if (pct > 0) pullback = triangular(pct * 100, 2, 4, 8) * 2;
                 }
             }
 
-            // D) Support (0-2 pts) — uses 1h + 1d swing lows
-            let supportScore = 0, nearestSupport = null, distSupportPct = null;
+            // D) Support (0-2)
+            let support = 0;
             const supports = [];
             if (k1h) supports.push(...findSwingLows(k1h.map(x => x.low)));
             if (k1d) supports.push(...findSwingLows(k1d.map(x => x.low)));
             if (supports.length > 0) {
                 const below = supports.filter(s => s <= lastPrice);
                 if (below.length > 0) {
-                    nearestSupport = Math.max(...below);
-                    distSupportPct = (lastPrice - nearestSupport) / lastPrice;
-                    if (distSupportPct >= 0 && distSupportPct <= 0.015) {
-                        supportScore = (1 - (distSupportPct / 0.015)) * 2;
-                    }
+                    const nearest = Math.max(...below);
+                    const dist = (lastPrice - nearest) / lastPrice;
+                    if (dist >= 0 && dist <= 0.015) support = (1 - dist / 0.015) * 2;
                 }
             }
 
-            // E) Funding (-2 to +1 pts) — matches Python thresholds exactly
-            let fundingScore = 0;
+            // E) Funding (-2 to +1)
+            let funding = 0;
             if (fundingRate != null) {
-                if (fundingRate >= 0.005) fundingScore = 1;
-                else if (fundingRate >= 0.002) fundingScore = 0.5;
-                else if (fundingRate <= -0.005) fundingScore = -2;
-                else if (fundingRate <= -0.002) fundingScore = -1;
+                if (fundingRate >= 0.005) funding = 1;
+                else if (fundingRate >= 0.002) funding = 0.5;
+                else if (fundingRate <= -0.005) funding = -2;
+                else if (fundingRate <= -0.002) funding = -1;
             }
 
-            // F) Regime penalty — simplified (no regime info in static version)
-            const regimePenalty = 0;
-
-            // G) Microstructure (0-1 pt) — vol z-score
-            let microScore = 0;
-            let volZ = 0;
+            // F) Micro (0-1)
+            let micro = 0, volZ = 0;
             if (k1m && k1m.length >= 20) {
                 const vols = k1m.map(x => x.volume);
                 const mean = vols.reduce((a, b) => a + b, 0) / vols.length;
-                const variance = vols.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / vols.length;
-                const std = Math.sqrt(variance);
+                const std = Math.sqrt(vols.reduce((a, b) => a + (b - mean) ** 2, 0) / vols.length);
                 if (std > 0) volZ = (vols[vols.length - 1] - mean) / std;
-                if (volZ > 2.0) microScore += 0.5;
-                // Wick ratio: check last candle
-                if (k1m.length > 0) {
-                    const last = k1m[k1m.length - 1];
-                    const bodySize = Math.abs(last.close - last.open);
-                    const totalRange = last.high - last.low;
-                    if (totalRange > 0) {
-                        const wickRatio = 1 - (bodySize / totalRange);
-                        if (wickRatio > 0.3) microScore += 0.5;
-                    }
-                }
-                microScore = clamp(microScore, 0, 1);
+                if (volZ > 2) micro += 0.5;
+                const last = k1m[k1m.length - 1];
+                const body = Math.abs(last.close - last.open);
+                const range = last.high - last.low;
+                if (range > 0 && (1 - body / range) > 0.3) micro += 0.5;
+                micro = clamp(micro, 0, 1);
             }
 
-            // Final sum
-            const rawRate = explosionScore + volumeScore + pullbackScore + supportScore + fundingScore + regimePenalty + microScore;
-            const finalRate = clamp(rawRate, 0, 10);
-
+            const raw = explosion + volume + pullback + support + funding + micro;
             return {
-                rate: Math.round(finalRate * 10) / 10,
-                explosion: explosionScore,
-                volumeScore: volumeScore,
-                pullback: pullbackScore,
-                support: supportScore,
-                funding: fundingScore,
-                regime: regimePenalty,
-                micro: microScore,
-                pullbackPct,
-                distSupportPct,
-                volZ: Math.round(volZ * 10) / 10,
-                recentHigh,
-                nearestSupport
+                rate: Math.round(clamp(raw, 0, 10) * 10) / 10,
+                volZ: Math.round(volZ * 10) / 10
             };
         }
 
-        // ── Get 5m change from klines (matches Python get_5m_change) ──
-        function get5mChangeFromKlines(k1m) {
+        // 5m change from 1m klines
+        function get5mChange(k1m) {
             if (!k1m || k1m.length < 6) return null;
-            try {
-                const current = k1m[k1m.length - 1].close;
-                const prev = k1m[k1m.length - Math.min(k1m.length, 6)].close;
-                return ((current - prev) / prev) * 100;
-            } catch (e) {
-                return null;
-            }
+            const curr = k1m[k1m.length - 1].close;
+            const prev = k1m[k1m.length - Math.min(k1m.length, 6)].close;
+            return ((curr - prev) / prev) * 100;
         }
 
-        // ── Main data fetch & process ──
+        // Main fetch
         async function fetchAll() {
             try {
-                loadTracking();
-
-                // Fetch 24hr tickers and funding rates in parallel
                 const [tR, fR] = await Promise.all([
                     fetch(API + '/fapi/v1/ticker/24hr'),
                     fetch(API + '/fapi/v1/premiumIndex')
                 ]);
                 const tickers = await tR.json();
                 const funding = await fR.json();
-
-                // Build funding map
                 const fMap = {};
                 funding.forEach(f => { fMap[f.symbol] = parseFloat(f.lastFundingRate); });
 
-                // Filter & sort top N by abs(24h change) — same as Python scanner
                 let data = tickers
                     .filter(t => t.symbol.endsWith('USDT') && parseFloat(t.quoteVolume) > 0)
                     .map(t => ({
@@ -1006,17 +894,14 @@
                         lastPrice: parseFloat(t.lastPrice),
                         priceChangePercent: parseFloat(t.priceChangePercent),
                         quoteVolume: parseFloat(t.quoteVolume),
-                        highPrice: parseFloat(t.highPrice),
-                        lowPrice: parseFloat(t.lowPrice),
                         fundingRate: fMap[t.symbol] ?? null
                     }))
                     .sort((a, b) => Math.abs(b.priceChangePercent) - Math.abs(a.priceChangePercent))
                     .slice(0, TOP_N);
 
-                // Compute volume percentile ranks for all symbols
                 const vols = data.map(t => t.quoteVolume);
 
-                // Fetch klines for all symbols in parallel (batched)
+                // Fetch all klines in parallel
                 const klineResults = await Promise.all(data.map(async t => {
                     const [k1m, k1h, k1d] = await Promise.all([
                         fetchKlines(t.symbol, '1m', 60),
@@ -1025,180 +910,72 @@
                     ]);
                     return { symbol: t.symbol, k1m, k1h, k1d };
                 }));
+                const kMap = {};
+                klineResults.forEach(r => { kMap[r.symbol] = r; });
 
-                // Build kline map
-                const klineMap = {};
-                klineResults.forEach(r => { klineMap[r.symbol] = r; });
-
-                // Compute rates synchronously (all klines already fetched)
+                // Compute rates
                 const enriched = data.map(t => {
-                    const kd = klineMap[t.symbol] || {};
+                    const kd = kMap[t.symbol] || {};
                     const volRank = percentileRank(vols, t.quoteVolume);
-                    const rateResult = computeRateSync(t, t.fundingRate, volRank, kd.k1m, kd.k1h, kd.k1d);
-                    const ret5m = get5mChangeFromKlines(kd.k1m);
+                    const rateResult = computeRate(t, t.fundingRate, volRank, kd.k1m, kd.k1h, kd.k1d);
+                    const ret5m = get5mChange(kd.k1m);
                     return { ...t, ...rateResult, ret_5m: ret5m };
                 });
 
-                // ── Track recent candidates ──
-                const now = Date.now();
-                const currentSymbols = enriched.map(t => t.symbol);
+                // GO NOW = ALL symbols with rate >= MIN_RATE
+                const goNow = enriched.filter(t => t.rate >= MIN_RATE);
 
-                // FIX #5: On FIRST load ever (no localStorage), don't add all as new
-                if (isFirstLoad) {
-                    // First load: just store current symbols, don't create candidates
-                    lastTopSymbols = currentSymbols;
-                    isFirstLoad = false;
-                    saveTracking();
-                    // Render with empty GO NOW (first load has no history)
-                    renderGo([], fMap);
-                    renderHot([], enriched, fMap, klineMap);
-                    renderAll(enriched, fMap);
-                    return;
-                }
-
-                // Find newly entered symbols
-                const newEntries = currentSymbols.filter(s => !lastTopSymbols.includes(s));
-
-                // Add new entries to recent candidates
-                newEntries.forEach(s => {
-                    if (!recentCandidates.find(c => c.symbol === s)) {
-                        const ticker = enriched.find(t => t.symbol === s);
-                        if (ticker) {
-                            recentCandidates.push({
-                                symbol: s,
-                                entryTime: now,
-                                quoteVolume: ticker.quoteVolume,
-                                entryTimestamp: new Date().toISOString()
-                            });
-                        }
-                    }
-                });
-
-                // Remove old candidates (>10 min) or dropped from top
-                recentCandidates = recentCandidates.filter(c => {
-                    const age = (now - c.entryTime) / 60000;
-                    return age <= MAX_AGE_MIN && currentSymbols.includes(c.symbol);
-                });
-
-                lastTopSymbols = currentSymbols;
-                saveTracking();
-
-                // Enrich recent candidates with rate data
-                const candidatesWithRate = [];
-                for (const c of recentCandidates) {
-                    const ticker = enriched.find(t => t.symbol === c.symbol);
-                    if (ticker && ticker.rate >= MIN_RATE) {
-                        const age = (now - c.entryTime) / 60000;
-                        candidatesWithRate.push({
-                            ...ticker,
-                            age_minutes: age,
-                            entryTimestamp: c.entryTimestamp
-                        });
-                    }
-                }
-
-                renderGo(candidatesWithRate, fMap);
-                renderHot(recentCandidates, enriched, fMap, klineMap);
-                renderAll(enriched, fMap);
-
+                renderGo(goNow);
+                renderHot(enriched, kMap);
+                renderAll(enriched);
             } catch (e) {
-                console.error('fetchAll error:', e);
-                document.getElementById('go-now-body').innerHTML =
-                    '<tr><td colspan="7" class="empty-state error-msg">⚠️ Error connecting to Binance API. Try refreshing.</td></tr>';
+                console.error(e);
+                document.getElementById('go-now-body').innerHTML = '<tr><td colspan="6" class="empty-state error-msg">⚠️ Error connecting to Binance API. Try refreshing.</td></tr>';
             }
         }
 
-        // ── Render: GO NOW table ──
-        function renderGo(list, fMap) {
+        function renderGo(list) {
             const tb = document.getElementById('go-now-body');
             const ct = document.getElementById('go-counter');
-
             if (!list.length) {
-                tb.innerHTML = '<tr><td colspan="7" class="empty-state"><div class="scanning-anim"><span class="scan-dot"></span><span>Scanning for GO setups...</span></div></td></tr>';
-                ct.className = 'counter-badge counter-zero';
-                ct.textContent = '0 signals';
-                return;
+                tb.innerHTML = '<tr><td colspan="6" class="empty-state"><div class="scanning-anim"><span class="scan-dot"></span><span>Scanning for GO setups...</span></div></td></tr>';
+                ct.className = 'counter-badge counter-zero'; ct.textContent = '0 signals'; return;
             }
-
-            const sorted = list.sort((a, b) => b.rate - a.rate);
+            const sorted = [...list].sort((a, b) => b.rate - a.rate);
             ct.className = 'counter-badge counter-fire';
             ct.innerHTML = '🔥 ' + sorted.length + ' signal' + (sorted.length > 1 ? 's' : '');
-
             tb.innerHTML = sorted.map(t => {
                 let ac, ai, al;
                 if (t.rate >= 7.5) { ac = 'go-fire'; ai = '🔥'; al = 'GO NOW'; }
                 else if (t.rate >= 5.5) { ac = 'go-hot'; ai = '⚡'; al = 'GO'; }
                 else { ac = 'go-watch'; ai = '👁️'; al = 'WATCH'; }
-
-                const ret5mTxt = t.ret_5m != null
-                    ? `<span class="${t.ret_5m > 0 ? 'positive' : 'negative'}">${t.ret_5m >= 0 ? '+' : ''}${t.ret_5m.toFixed(2)}%</span>`
-                    : '—';
-                const volZTxt = t.volZ != null ? t.volZ.toFixed(1) : '—';
-
-                return `<tr class="row-animate ${ac}-row">` +
-                    `<td><span class="go-badge ${ac}">${ai} ${al}</span></td>` +
-                    `<td class="symbol-cell-go">${bLink(t.symbol)} ${t.symbol}</td>` +
-                    `<td>${rateH(t.rate)}</td>` +
-                    `<td>${fundTag(t.fundingRate)}</td>` +
-                    `<td>${t.age_minutes.toFixed(1)}m</td>` +
-                    `<td>${ret5mTxt}</td>` +
-                    `<td>${volZTxt}</td></tr>`;
+                const sm = t.ret_5m != null ? `<span class="${t.ret_5m > 0 ? 'positive' : 'negative'}">${t.ret_5m >= 0 ? '+' : ''}${t.ret_5m.toFixed(2)}%</span>` : '—';
+                const vz = t.volZ != null ? t.volZ.toFixed(1) : '—';
+                return `<tr class="row-animate ${ac}-row"><td><span class="go-badge ${ac}">${ai} ${al}</span></td><td class="symbol-cell-go">${bLink(t.symbol)} ${t.symbol}</td><td>${rateH(t.rate)}</td><td>${fundTag(t.fundingRate)}</td><td>${sm}</td><td>${vz}</td></tr>`;
             }).join('');
         }
 
-        // FIX #1: renderHot — was using async .map() which produces [object Promise]
-        // Now fully synchronous using pre-fetched kline data
-        function renderHot(list, enriched, fMap, klineMap) {
+        function renderHot(enriched, kMap) {
             const tb = document.getElementById('hot-spots-body');
-            if (!list.length) {
-                tb.innerHTML = '<tr><td colspan="5" class="empty-state">No recent entries</td></tr>';
-                return;
-            }
-
-            const rows = list.slice(0, 10).map(c => {
-                const ticker = enriched.find(t => t.symbol === c.symbol);
-                const kd = klineMap[c.symbol];
-                const chg = kd ? get5mChangeFromKlines(kd.k1m) : null;
-                const chgClass = chg && chg > 0 ? 'positive-strong' : 'negative';
-                const chgTxt = chg != null ? `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%` : '—';
-                const vol = ticker ? ticker.quoteVolume : (c.quoteVolume || 0);
-
-                return `<tr class="row-animate">` +
-                    `<td class="symbol-cell"><span style="font-size:1.2rem">🔥</span> ${bLink(c.symbol)} ${c.symbol}</td>` +
-                    `<td class="${chgClass}">${chgTxt}</td>` +
-                    `<td>${fmtV(vol)}</td>` +
-                    `<td>${fundTag(fMap[c.symbol])}</td>` +
-                    `<td style="color:var(--text-secondary)">${c.entryTimestamp ? c.entryTimestamp.slice(11, 19) : '—'}</td></tr>`;
-            });
-
-            tb.innerHTML = rows.join('');
+            const movers = [...enriched].sort((a, b) => Math.abs(b.priceChangePercent) - Math.abs(a.priceChangePercent)).slice(0, 10);
+            if (!movers.length) { tb.innerHTML = '<tr><td colspan="5" class="empty-state">No data</td></tr>'; return; }
+            tb.innerHTML = movers.map(t => {
+                const kd = kMap[t.symbol];
+                const chg = kd ? get5mChange(kd.k1m) : null;
+                const cls = chg && chg > 0 ? 'positive-strong' : 'negative';
+                const txt = chg != null ? `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%` : '—';
+                return `<tr class="row-animate"><td class="symbol-cell"><span style="font-size:1.2rem">🔥</span> ${bLink(t.symbol)} ${t.symbol}</td><td class="${cls}">${txt}</td><td>${fmtV(t.quoteVolume)}</td><td>${fundTag(t.fundingRate)}</td><td class="${t.priceChangePercent > 0 ? 'positive-strong' : 'negative'}">${t.priceChangePercent.toFixed(2)}%</td></tr>`;
+            }).join('');
         }
 
-        // ── Render: All Symbols table ──
-        function renderAll(list, fMap) {
+        function renderAll(list) {
             const sorted = [...list].sort((a, b) => b.rate - a.rate);
             document.getElementById('status-body').innerHTML = sorted.map(t =>
-                `<tr class="row-animate">` +
-                `<td class="symbol-cell">${bLink(t.symbol)} ${t.symbol}</td>` +
-                `<td class="price">${fmtP(t.lastPrice)}</td>` +
-                `<td class="${t.priceChangePercent > 0 ? 'positive-strong' : 'negative'}">${t.priceChangePercent.toFixed(2)}%</td>` +
-                `<td>${fmtV(t.quoteVolume)}</td>` +
-                `<td>${rateH(t.rate)}</td>` +
-                `<td>${fundTag(t.fundingRate)}</td></tr>`
+                `<tr class="row-animate"><td class="symbol-cell">${bLink(t.symbol)} ${t.symbol}</td><td class="price">${fmtP(t.lastPrice)}</td><td class="${t.priceChangePercent > 0 ? 'positive-strong' : 'negative'}">${t.priceChangePercent.toFixed(2)}%</td><td>${fmtV(t.quoteVolume)}</td><td>${rateH(t.rate)}</td><td>${fundTag(t.fundingRate)}</td></tr>`
             ).join('');
         }
 
-        // ── Timer & start ──
-        setInterval(() => {
-            countdown--;
-            const el = document.getElementById('refresh-timer');
-            if (el) el.textContent = '(' + countdown + 's)';
-            if (countdown <= 0) {
-                countdown = REFRESH_MS / 1000;
-                fetchAll();
-            }
-        }, 1000);
-
+        setInterval(() => { countdown--; const el = document.getElementById('refresh-timer'); if (el) el.textContent = '(' + countdown + 's)'; if (countdown <= 0) { countdown = REFRESH_MS / 1000; fetchAll(); } }, 1000);
         fetchAll();
     </script>
 </body>

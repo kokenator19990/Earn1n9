@@ -157,10 +157,19 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
 
         rate_map_for_scanner = {s: d.get("rate", 0.0) for s, d in rate_data_map.items()}
         
-        # GO NOW candidates (lowered threshold to 4.0)
-        recent_candidates = scanner.get_recent_candidates(
-            max_age_min=10, min_rate=4.0, rate_map=rate_map_for_scanner
-        )
+        # GO NOW: ALL top symbols with rate >= 4.0 (no age filter)
+        go_now_candidates = []
+        for row in top_rows:
+            sym = row["symbol"]
+            r_info = rate_data_map.get(sym, {})
+            rate_val = r_info.get("rate", 0.0) if isinstance(r_info, dict) else 0.0
+            if rate_val >= 4.0:
+                go_now_candidates.append({
+                    "symbol": sym,
+                    "rate": rate_val,
+                    "components": r_info.get("components", {}),
+                    "debug": r_info.get("debug", {}),
+                })
 
         # --- DEFINE ALL HELPERS BEFORE USE ---
 
@@ -179,9 +188,6 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
         def get_5m_change(symbol):
             klines = scanner.get_cached_klines(symbol, "1m")
             if not klines or len(klines) < 5:
-                cand = next((c for c in recent_candidates if c["symbol"] == symbol), None)
-                if cand and "metrics" in cand and "ret_5m" in cand["metrics"]:
-                    return cand["metrics"]["ret_5m"] * 100
                 return None
             try:
                 current = klines[-1]["close"]
@@ -241,14 +247,13 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
 
         # --- BUILD TABLES ---
 
-        # GO NOW candidates sorted by Rate DESC
-        recent_candidates_sorted = sorted(recent_candidates, key=lambda r: (-r.get("rate", 0.0)))
+        # GO NOW: all qualified symbols sorted by Rate DESC
+        go_now_sorted = sorted(go_now_candidates, key=lambda r: (-r.get("rate", 0.0)))
         
         go_now_rows = ""
-        for row in recent_candidates_sorted:
+        for row in go_now_sorted:
             symbol = row["symbol"]
             rate = row.get("rate", 0.0)
-            age = row.get("age_minutes", 0.0)
             
             # Determine urgency level
             if rate >= 7.5:
@@ -264,20 +269,37 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
                 alert_icon = "👁️"
                 alert_label = "WATCH"
             
+            # 5m change and vol_z from klines
+            chg_5m = get_5m_change(symbol)
+            chg_5m_html = "—"
+            if chg_5m is not None:
+                color_class = "positive" if chg_5m > 0 else "negative"
+                chg_5m_html = f'<span class="{color_class}">{chg_5m:+.2f}%</span>'
+            
+            klines_1m = scanner.get_cached_klines(symbol, "1m")
+            vol_z_html = "—"
+            if klines_1m and len(klines_1m) >= 20:
+                vols = [k["volume"] for k in klines_1m]
+                mean_v = sum(vols) / len(vols)
+                var_v = sum((v - mean_v) ** 2 for v in vols) / len(vols)
+                std_v = var_v ** 0.5
+                if std_v > 0:
+                    vol_z = (vols[-1] - mean_v) / std_v
+                    vol_z_html = f"{vol_z:.1f}"
+            
             go_now_rows += (
                 f'<tr class="row-animate {alert_class}-row">'
                 f'<td><span class="go-badge {alert_class}">{alert_icon} {alert_label}</span></td>'
                 f'<td class="symbol-cell-go">{binance_link(symbol)} {symbol}</td>'
                 f'<td>{get_rate_html(row)}</td>'
                 f'<td>{get_funding_tag(funding_map.get(symbol))}</td>'
-                f'<td>{age:.1f}m</td>'
-                f'<td>{get_feature(row, "ret_5m")}</td>'
-                f'<td>{get_feature(row, "vol_z_1m")}</td>'
+                f'<td>{chg_5m_html}</td>'
+                f'<td>{vol_z_html}</td>'
                 f'</tr>'
             )
 
         go_now_empty = (
-            '<tr><td colspan="7" class="empty-state">'
+            '<tr><td colspan="6" class="empty-state">'
             '<div class="scanning-anim">'
             '<span class="scan-dot"></span>'
             '<span>Scanning for GO setups...</span>'
@@ -355,8 +377,8 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
             for row in symbols_status_with_rate
         )
 
-        num_go = len(recent_candidates_sorted)
-        num_fire = sum(1 for r in recent_candidates_sorted if r.get("rate", 0) >= 7.5)
+        num_go = len(go_now_sorted)
+        num_fire = sum(1 for r in go_now_sorted if r.get("rate", 0) >= 7.5)
 
         return HTMLResponse(
             f'''
@@ -923,7 +945,6 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
                                     <th>Pair</th>
                                     <th>Rate</th>
                                     <th>Funding</th>
-                                    <th>Age</th>
                                     <th>5m %</th>
                                     <th>Vol-Z</th>
                                 </tr>
