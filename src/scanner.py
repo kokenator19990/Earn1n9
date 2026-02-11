@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 from .binance_rest import BinanceRestClient
 from .storage import Storage
 from .telegram_notifier import TelegramNotifier
-from .trade_rating import compute_rate, percentile_rank, find_swing_lows
+from .trade_rating import compute_rate, percentile_rank, find_swing_lows, calculate_rsi, check_short_signal
 
 # --- RecentCandidatesCache ---
 class RecentCandidatesCache:
@@ -42,6 +42,10 @@ class RecentCandidatesCache:
         with self._lock:
             if symbol in self._data:
                 self._data[symbol]["metrics"] = metrics
+
+    def get(self, symbol: str) -> Optional[dict]:
+        with self._lock:
+            return self._data.get(symbol)
 
     def get_recent(self, max_age_min: float = 5, min_rate: float = 7.2, rate_map: Optional[dict] = None) -> list:
         now = time.time()
@@ -207,6 +211,25 @@ class Scanner:
                 wick = current["high"] - max(current["open"], current["close"])
                 wick_ratio = wick / rng
 
+        # 15m Return (from 1m candles)
+        ret_15m = 0.0
+        if k1m and len(k1m) > 15:
+            current_close = k1m[-1]["close"]
+            prev_15m = k1m[-16]["close"] # 15 mins ago
+            if prev_15m > 0:
+                ret_15m = (current_close - prev_15m) / prev_15m
+
+        # 3h Return (from 1h candles)
+        ret_3h = 0.0
+        if k1h and len(k1h) >= 4: # Need at least 4 to get -3h shift? 
+            # k1h[-1] is current (incomplete). k1h[-2] is last closed.
+            # User wants "Growth of last 3 hours".
+            # Let's use current vs 3 hours ago.
+            current_h = k1h[-1]["close"]
+            prev_3h = k1h[-4]["close"] # -1(curr), -2(1h), -3(2h), -4(3h ago)
+            if prev_3h > 0:
+                ret_3h = (current_h - prev_3h) / prev_3h
+
         # Support Logic (1h swings)
         nearest_support = None
         if k1h and len(k1h) > 5:
@@ -216,10 +239,21 @@ class Scanner:
             if candidates:
                 nearest_support = max(candidates)
         
-        # Recent High
+        # Recent High (Use 1h candles to catch 'Cycle High' not just last 60m)
         recent_high = None
-        if k1m:
+        if k1h:
+             recent_high = max(k["high"] for k in k1h)
+        elif k1m: # Fallback
              recent_high = max(k["high"] for k in k1m)
+
+        # 2.5 Fetch 5m Klines (for Short Logic)
+        k5m = await self._ensure_klines_cached(symbol, "5m", limit=50)
+
+        # 3. Calculate RSI (14 period on 1m candles) - Immediate Momentum
+        rsi_val = 50.0
+        if k1m and len(k1m) > 15:
+            closes = [k["close"] for k in k1m]
+            rsi_val = calculate_rsi(closes, period=14)
 
         # 4. Fetch Funding (Cached)
         funding_rate = await self._get_cached_funding(symbol)
@@ -230,20 +264,31 @@ class Scanner:
             quote_volume=quote_vol,
             volume_rank=vol_rank_score,
             last_price=last_price,
-            recent_high=recent_high,
-            nearest_support=nearest_support,
+            rsi_val=rsi_val,
+            vol_z=vol_z,
+            change5m_pct=ret_5m,
             funding_rate=funding_rate,
             regime_score=regime_score,
             wick_ratio=wick_ratio,
-            vol_z=vol_z
+            # Legacy args passed to kwargs
+            recent_high=recent_high,
+            nearest_support=nearest_support
         )
+        
+        # 6. Check Short Signal
+        short_sig = check_short_signal(k5m, last_price)
+        rate_res.short_signal = short_sig
 
         return {
             "rate": rate_res.rate,
             "rate_components": asdict(rate_res.components),
             "debug": rate_res.debug,
+            "short_signal": asdict(short_sig) if short_sig else None,
             "ret_5m": ret_5m,
+            "ret_15m": ret_15m,   # NEW
+            "ret_3h": ret_3h,     # NEW
             "vol_z_1m": vol_z,
+            "rsi_14_1m": rsi_val,
             "fundingRate": funding_rate
         }
 
@@ -359,10 +404,59 @@ class Scanner:
     async def _process_alerts(self, top: list[TickerView]) -> None:
         now_ts = time.time()
         for item in top:
-            last_sent = self._cooldowns.get(item.symbol, 0.0)
-            if (now_ts - last_sent) < self._cooldown_sec:
+            # Check for Rate/Short Data
+            # Rate data is in self._recent_candidates or need to access cache?
+            # Actually, `top` items are just TickerView (price/vol). 
+            # We need the Computed Metrics (RateResult) which are stored in `_recent_candidates` 
+            # OR we can re-access the cache/metrics if we stored them in `_refresh_kline_cache`?
+            # Wait, `run` loop calls `_refresh_kline_cache(top)` then `_process_alerts(top)`.
+            # But where are the metrics? 
+            # They are calculated in `_calculate_metrics` called by `recent_candidates` UPDATE loop (lines 315-318).
+            # But that loop happens AFTER `_process_alerts`.
+            # We should move the metrics calculation BEFORE alerts?
+            # Or just access the recent candidates cache.
+            
+            # Let's get the metrics from RecentCandidates if available
+            cand = self._recent_candidates.get(item.symbol)
+            if not cand:
+                continue
+                
+            metrics = cand.get('metrics', {})
+            rate_val = metrics.get('rate', 0.0)
+            short_sig = metrics.get('short_signal')
+            
+            # --- ALERT LOGIC ---
+            
+            should_alert = False
+            alert_type = "24h_change"
+            
+            # 1. Short Signal Alert
+            if short_sig and short_sig.get('triggered'):
+                # Check cooldown specifically for SHORT
+                last_sent_short = self._cooldowns.get(f"{item.symbol}_SHORT", 0.0)
+                if (now_ts - last_sent_short) > self._cooldown_sec:
+                    should_alert = True
+                    alert_type = "SHORT_SIGNAL"
+            
+            # 2. Pump Alert (Rate > 7.0)
+            elif rate_val > 7.0:
+                 last_sent_pump = self._cooldowns.get(f"{item.symbol}_PUMP", 0.0)
+                 if (now_ts - last_sent_pump) > self._cooldown_sec:
+                     should_alert = True
+                     alert_type = "PUMP_SIGNAL"
+            
+            # 3. Legacy 24h Change (Fallback)
+            # Only if NO other alert
+            elif not should_alert:
+                 last_sent = self._cooldowns.get(item.symbol, 0.0)
+                 if (now_ts - last_sent) > self._cooldown_sec:
+                    should_alert = True
+                    alert_type = "24h_change"
+
+            if not should_alert:
                 continue
 
+            # Format Message
             payload = {
                 "symbol": item.symbol,
                 "lastPrice": item.last_price,
@@ -370,8 +464,10 @@ class Scanner:
                 "quoteVolume": item.quote_volume,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "link": f"https://www.binance.com/es-LA/futures/{item.symbol}",
+                "rate": rate_val,
+                "short_signal": short_sig
             }
-            message = self._format_message(payload)
+            message = self._format_message(payload, alert_type)
 
             try:
                 sent = await self._notifier.send_alert(message)
@@ -383,14 +479,20 @@ class Scanner:
                 continue
 
             if sent:
-                self._cooldowns[item.symbol] = now_ts
-                self._storage.insert_alert(item.symbol, "24h_change", payload)
-                self._logger.info("alert_sent", extra=payload)
+                # Update specific cooldown
+                if alert_type == "SHORT_SIGNAL":
+                    self._cooldowns[f"{item.symbol}_SHORT"] = now_ts
+                elif alert_type == "PUMP_SIGNAL":
+                    self._cooldowns[f"{item.symbol}_PUMP"] = now_ts
+                else:
+                    self._cooldowns[item.symbol] = now_ts
+                    
+                self._storage.insert_alert(item.symbol, alert_type, payload)
+                self._logger.info("alert_sent", extra={"type": alert_type, **payload})
 
     @staticmethod
-    def _format_message(payload: dict[str, Any]) -> str:
-        return (
-            "Alerta 24h USDT Perp\n"
+    def _format_message(payload: dict[str, Any], alert_type: str = "24h_change") -> str:
+        base = (
             f"Symbol: {payload['symbol']}\n"
             f"Last: {payload['lastPrice']}\n"
             f"24h%: {payload['priceChangePercent']}\n"
@@ -398,6 +500,25 @@ class Scanner:
             f"Time: {payload['timestamp']}\n"
             f"Link: {payload['link']}"
         )
+        
+        if alert_type == "SHORT_SIGNAL":
+            sig = payload.get('short_signal', {})
+            return (
+                f"🚨 **SHORT ALERT** 🚨\n"
+                f"Reason: {sig.get('reason')}\n"
+                f"Entry: {payload['lastPrice']}\n"
+                f"SL: {sig.get('stop_loss'):.4f}\n"
+                f"TP: {sig.get('take_profit'):.4f}\n\n"
+                f"{base}"
+            )
+        elif alert_type == "PUMP_SIGNAL":
+             return (
+                f"🔥 **PUMP ALERT** 🔥\n"
+                f"Score: {payload.get('rate')}/10\n\n"
+                f"{base}"
+            )
+        else:
+             return f"Alerta 24h USDT Perp\n{base}"
 
     def _save_snapshot(self, top: list[TickerView]) -> None:
         now = time.time()

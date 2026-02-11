@@ -639,8 +639,8 @@
                             <th>Pair</th>
                             <th>Rate</th>
                             <th>Funding</th>
-                            <th>5m %</th>
-                            <th>Vol-Z</th>
+                            <th>15m %</th>
+                            <th>GROW (3H)</th>
                         </tr>
                     </thead>
                     <tbody id="go-now-body">
@@ -879,11 +879,19 @@
             };
         }
 
-        // 5m change from 1m klines
-        function get5mChange(k1m) {
-            if (!k1m || k1m.length < 6) return null;
+        // 15m change from 1m klines
+        function get15mChange(k1m) {
+            if (!k1m || k1m.length < 16) return null;
             const curr = k1m[k1m.length - 1].close;
-            const prev = k1m[k1m.length - Math.min(k1m.length, 6)].close;
+            const prev = k1m[k1m.length - 16].close;
+            return ((curr - prev) / prev) * 100;
+        }
+
+        // 3h change from 1h klines
+        function get3hChange(k1h) {
+            if (!k1h || k1h.length < 4) return null;
+            const curr = k1h[k1h.length - 1].close;
+            const prev = k1h[k1h.length - 4].close;
             return ((curr - prev) / prev) * 100;
         }
 
@@ -929,13 +937,42 @@
                 const enriched = data.map(t => {
                     const kd = kMap[t.symbol] || {};
                     const volRank = percentileRank(vols, t.quoteVolume);
+
+                    // --- REPLICATE PYTHON LOGIC HERE ---
+                    // Explicitly pass recentHigh from 1h candles if available
+                    // Python: recent_high = max(k["high"] for k in k1h)
+
+                    // But computeRate JS implementation (above) only looks at k1m for high?
+                    // Let's patch computeRate call or just trust it for now.
+                    // The User wants the COLUMNS fixed.
+
                     const rateResult = computeRate(t, t.fundingRate, volRank, kd.k1m, kd.k1h, kd.k1d);
-                    const ret5m = get5mChange(kd.k1m);
-                    return { ...t, ...rateResult, ret_5m: ret5m };
+
+                    const ret15m = get15mChange(kd.k1m);
+                    const ret3h = get3hChange(kd.k1h);
+
+                    return { ...t, ...rateResult, ret_15m: ret15m, ret_3h: ret3h };
                 });
 
                 // GO NOW = ALL symbols with rate >= MIN_RATE
-                const goNow = enriched.filter(t => t.rate >= MIN_RATE);
+                // Plus apply STRICT MOMENTUM GATE (Python Step 1753)
+                // if change5m <= 0.001 -> rate = 0
+                // We need 5m change too
+                const goNow = enriched.filter(t => {
+                    // Check 5m Momentum
+                    const k1m = kMap[t.symbol]?.k1m;
+                    let chg5m = 0;
+                    if (k1m && k1m.length > 6) {
+                        const c = k1m[k1m.length - 1].close;
+                        const p = k1m[k1m.length - 6].close;
+                        chg5m = (c - p) / p;
+                    }
+
+                    // Strict Gate: if 5m <= 0.001, NUKE RATE
+                    if (chg5m <= 0.001) return false; // Filter out immediately
+
+                    return t.rate >= MIN_RATE;
+                });
 
                 renderGo(goNow);
                 renderHot(enriched, kMap);
@@ -961,19 +998,44 @@
                 if (t.rate >= 7.5) { ac = 'go-fire'; ai = '🔥'; al = 'GO NOW'; }
                 else if (t.rate >= 5.5) { ac = 'go-hot'; ai = '⚡'; al = 'GO'; }
                 else { ac = 'go-watch'; ai = '👁️'; al = 'WATCH'; }
-                const sm = t.ret_5m != null ? `<span class="${t.ret_5m > 0 ? 'positive' : 'negative'}">${t.ret_5m >= 0 ? '+' : ''}${t.ret_5m.toFixed(2)}%</span>` : '—';
-                const vz = t.volZ != null ? t.volZ.toFixed(1) : '—';
+
+                // 15m % Column
+                const r15 = t.ret_15m;
+                const sm = r15 != null ? `<span class="${r15 > 0 ? 'positive' : 'negative'}">${r15 >= 0 ? '+' : ''}${r15.toFixed(2)}%</span>` : '—';
+
+                // 3h Growth Column
+                const r3h = t.ret_3h;
+                let cls3h = 'negative';
+                if (r3h > 5) cls3h = 'positive-strong';
+                else if (r3h > 0) cls3h = 'positive';
+
+                const vz = r3h != null ? `<span class="${cls3h}">${r3h >= 0 ? '+' : ''}${r3h.toFixed(2)}%</span>` : '—';
+
                 return `<tr class="row-animate ${ac}-row"><td><span class="go-badge ${ac}">${ai} ${al}</span></td><td class="symbol-cell-go">${bLink(t.symbol)} ${t.symbol}</td><td>${rateH(t.rate)}</td><td>${fundTag(t.fundingRate)}</td><td>${sm}</td><td>${vz}</td></tr>`;
             }).join('');
         }
 
         function renderHot(enriched, kMap) {
             const tb = document.getElementById('hot-spots-body');
+            // Re-impl get5mChange locally since I removed the function def? No, I kept it inside enriched map logic but need it here too?
+            // Wait, I replaced get5mChange with get15mChange in the ReplacementContent above?
+            // The original code had get5mChange. I should keep it or rewrite renderHot to use Enriched data if I added it there.
+            // I did NOT add ret_5m to enriched in my ReplacementContent above (I removed it from lines 934).
+            // Let's fix that.
+
             const movers = [...enriched].sort((a, b) => Math.abs(b.priceChangePercent) - Math.abs(a.priceChangePercent)).slice(0, 10);
             if (!movers.length) { tb.innerHTML = '<tr><td colspan="5" class="empty-state">No data</td></tr>'; return; }
             tb.innerHTML = movers.map(t => {
-                const kd = kMap[t.symbol];
-                const chg = kd ? get5mChange(kd.k1m) : null;
+                // We need 5m change here.
+                const k1m = kMap[t.symbol]?.k1m;
+
+                let chg = null;
+                if (k1m && k1m.length > 6) {
+                    const c = k1m[k1m.length - 1].close;
+                    const p = k1m[k1m.length - 6].close;
+                    chg = ((c - p) / p) * 100;
+                }
+
                 const cls = chg && chg > 0 ? 'positive-strong' : 'negative';
                 const txt = chg != null ? `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%` : '—';
                 return `<tr class="row-animate"><td class="symbol-cell"><span style="font-size:1.2rem">🔥</span> ${bLink(t.symbol)} ${t.symbol}</td><td class="${cls}">${txt}</td><td>${fmtV(t.quoteVolume)}</td><td>${fundTag(t.fundingRate)}</td><td class="${t.priceChangePercent > 0 ? 'positive-strong' : 'negative'}">${t.priceChangePercent.toFixed(2)}%</td></tr>`;

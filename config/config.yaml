@@ -4,9 +4,9 @@ binance:
   ticker_24h_endpoint: "/fapi/v1/ticker/24hr"
 scanner:
   refresh_24h_sec: 30
-  min_24h_change_pct: 15.0
-  min_quote_volume_usdt: 5000000
-  topN: 60
+  min_24h_change_pct: 0.1
+  min_quote_volume_usdt: 50000000
+  topN: 20
   cooldown_min: 10
 websocket:
   base_url: "wss://fstream.binance.com/stream"

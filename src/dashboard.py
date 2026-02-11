@@ -158,12 +158,16 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
             sym = row["symbol"]
             r_info = rate_data_map.get(sym, {})
             rate_val = r_info.get("rate", 0.0) if isinstance(r_info, dict) else 0.0
-            if rate_val >= 4.0:
+            short_sig = r_info.get("short_signal")
+            
+            # GO NOW Rule: Rate >= 4.0 OR Triggered Short Signal
+            if rate_val >= 4.0 or (short_sig and short_sig.get('triggered')):
                 go_now_candidates.append({
                     "symbol": sym,
                     "rate": rate_val,
                     "components": r_info.get("components", {}),
                     "debug": r_info.get("debug", {}),
+                    "short_signal": short_sig,
                 })
 
         # --- DEFINE ALL HELPERS BEFORE USE ---
@@ -207,8 +211,8 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
 
         def get_rate_html(row):
             rate = row.get("rate", 0.0)
-            metrics = row.get("metrics", {})
-            comps = metrics.get("rate_components", {})
+            comps = row.get("components", {}) or {}
+            short_sig = row.get("short_signal")
 
             if rate >= 7.5:
                 badge_class = "rate-fire"
@@ -221,14 +225,33 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
 
             tooltip_content = (
                 f"<div class='tt-row'><span class='tt-label'>Explosion</span><span class='tt-val'>{comps.get('explosion',0)}</span></div>"
-                f"<div class='tt-row'><span class='tt-label'>Volume</span><span class='tt-val'>{comps.get('volume',0)}</span></div>"
-                f"<div class='tt-row'><span class='tt-label'>Pullback</span><span class='tt-val'>{comps.get('pullback',0)}</span></div>"
-                f"<div class='tt-row'><span class='tt-label'>Support</span><span class='tt-val'>{comps.get('support',0)}</span></div>"
+                f"<div class='tt-row'><span class='tt-label'>Vol Rank</span><span class='tt-val'>{comps.get('volume',0)}</span></div>"
+                f"<div class='tt-row'><span class='tt-label'>RSI</span><span class='tt-val'>{comps.get('rsi',0)}</span></div>"
+                f"<div class='tt-row'><span class='tt-label'>Vol Z</span><span class='tt-val'>{comps.get('vol_z',0)}</span></div>"
                 f"<div class='tt-row'><span class='tt-label'>Funding</span><span class='tt-val'>{comps.get('funding',0)}</span></div>"
                 f"<div class='tt-sep'></div>"
                 f"<div class='tt-row'><span class='tt-label'>Regime</span><span class='tt-val'>{comps.get('regime_bonus',0)}</span></div>"
                 f"<div class='tt-row'><span class='tt-label'>Micro</span><span class='tt-val'>{comps.get('microstructure_bonus',0)}</span></div>"
             )
+            
+            if short_sig and short_sig.get('triggered'):
+                sl = short_sig.get('stop_loss', 0)
+                tp = short_sig.get('take_profit', 0)
+                reason = short_sig.get('reason', '')
+                tooltip_content += (
+                    f"<div class='tt-sep'></div>"
+                    f"<div class='tt-row warning'><span class='tt-label'>SHORT ALERT</span></div>"
+                    f"<div class='tt-row'><span class='tt-label'>Stop Loss</span><span class='tt-val'>{sl:.4f}</span></div>"
+                    f"<div class='tt-row'><span class='tt-label'>Take Profit</span><span class='tt-val'>{tp:.4f}</span></div>"
+                    f"<div class='tt-row'><span class='tt-label'>Reason</span><span class='tt-val'>{reason}</span></div>"
+                )
+                # Override badge or append
+                return (
+                    f'<div class="tooltip-wrap">'
+                    f'<span class="rate-badge rate-fire">SHORT</span>'
+                    f'<div class="tooltip-box">{tooltip_content}</div>'
+                    f'</div>'
+                )
 
             return (
                 f'<div class="tooltip-wrap">'
@@ -264,23 +287,25 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
                 alert_icon = "👁️"
                 alert_label = "WATCH"
             
-            # 5m change and vol_z from klines
-            chg_5m = get_5m_change(symbol)
-            chg_5m_html = "—"
-            if chg_5m is not None:
-                color_class = "positive" if chg_5m > 0 else "negative"
-                chg_5m_html = f'<span class="{color_class}">{chg_5m:+.2f}%</span>'
+            # Updated Metrics (User Request: 15m % and 3h Growth)
+            metrics = row.get("metrics", {})
             
-            klines_1m = scanner.get_cached_klines(symbol, "1m")
-            vol_z_html = "—"
-            if klines_1m and len(klines_1m) >= 20:
-                vols = [k["volume"] for k in klines_1m]
-                mean_v = sum(vols) / len(vols)
-                var_v = sum((v - mean_v) ** 2 for v in vols) / len(vols)
-                std_v = var_v ** 0.5
-                if std_v > 0:
-                    vol_z = (vols[-1] - mean_v) / std_v
-                    vol_z_html = f"{vol_z:.1f}"
+            # 15m %
+            ret_15m = metrics.get("ret_15m")
+            chg_15m_html = "—"
+            if ret_15m is not None:
+                pct_15 = ret_15m * 100.0
+                color_class = "positive" if pct_15 > 0 else "negative"
+                chg_15m_html = f'<span class="{color_class}">{pct_15:+.2f}%</span>'
+
+            # 3h Growth (Ret 3h)
+            ret_3h = metrics.get("ret_3h")
+            grow_3h_html = "—"
+            if ret_3h is not None:
+                # Use strong color for good growth
+                pct_3h = ret_3h * 100.0
+                color_class = "positive-strong" if pct_3h > 5.0 else ("positive" if pct_3h > 0 else "negative")
+                grow_3h_html = f'<span class="{color_class}">{pct_3h:+.2f}%</span>'
             
             go_now_rows += (
                 f'<tr class="row-animate {alert_class}-row">'
@@ -288,8 +313,8 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
                 f'<td class="symbol-cell-go">{binance_link(symbol)} {symbol}</td>'
                 f'<td>{get_rate_html(row)}</td>'
                 f'<td>{get_funding_tag(funding_map.get(symbol))}</td>'
-                f'<td>{chg_5m_html}</td>'
-                f'<td>{vol_z_html}</td>'
+                f'<td>{chg_15m_html}</td>'
+                f'<td>{grow_3h_html}</td>'
                 f'</tr>'
             )
 
@@ -940,8 +965,8 @@ def create_app(scanner: Scanner, storage: Storage, monitor: ExplosionMonitor) ->
                                     <th>Pair</th>
                                     <th>Rate</th>
                                     <th>Funding</th>
-                                    <th>5m %</th>
-                                    <th>Vol-Z</th>
+                                    <th>15m %</th>
+                                    <th>GROW (3H)</th>
                                 </tr>
                             </thead>
                             <tbody>
